@@ -2012,4 +2012,46 @@
                            )
         )
 
+        (define spyro2-autumnplains (new 'static 'level-load-info
+                           :index 26
+                           :name 'spyro2-autumnplains
+                           :visname 'spyro2-autumnplains-vis ;; name + -vis
+                           :nickname 'atm          ;; nickname
+                           :packages '(training)
+                           :sound-banks '(training)
+                           :music-bank 'village1
+                           :ambient-sounds '()
+                           :mood '*training-mood*
+                           :mood-func 'update-mood-training
+                           :ocean '*ocean-map-village1*
+                           :sky #t
+                           :sun-fade 1.0
+                           :continues '((new 'static 'continue-point
+                                             :name "spyro2-autumnplains-start"
+                                             :level 'spyro2-autumnplains
+                                             :trans (new 'static 'vector :x (meters 0) :y (meters 210) :z (meters 0) :w 1.0)
+                                             :quat (new 'static 'quaternion  :w 1.0)
+                                             :camera-trans (new 'static 'vector :x 0.0 :y 4096.0 :z 0.0 :w 1.0)
+                                             :camera-rot (new 'static 'array float 9 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+                                             :load-commands '()
+                                             :vis-nick 'none
+                                             :lev0 'spyro2-autumnplains
+                                             :disp0 'display
+                                             :lev1 'village1
+                                             :disp1 #f
+                                             ))
+                           :tasks '()
+                           :priority 100
+    :load-commands '()
+    :alt-load-commands '()
+    :bsp-mask #xffffffffffffffff
+    :bsphere (new 'static 'sphere :x -5079040.0 :z 4055040.0 :w 1024000.0)
+    :buzzer 95
+    :bottom-height (meters -114)
+    :run-packages '("common" "villagep")
+    :wait-for-load #f
+                           )
+        )
+
 (cons! *level-load-list* 'test-zone)
+(cons! *level-load-list* 'spyro2-autumnplains)

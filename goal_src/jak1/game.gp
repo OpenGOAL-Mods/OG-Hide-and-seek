@@ -1642,6 +1642,9 @@
 ;; the DGO file
 (custom-level-cgo "TSZ.DGO" "test-zone/testzone.gd")
 
+(build-custom-level "spyro2-autumnplains")
+(custom-level-cgo "SPYROATM.DGO" "spyro2-autumnplains/testzone.gd")
+
 ;;;;;;;;;;;;;;;;;;;;;
 ;; Game Engine Code
 ;;;;;;;;;;;;;;;;;;;;;
@@ -2067,7 +2070,8 @@
 (goal-src "pc/features/autosplit.gc" "autosplit-h" "task-control-h" "progress-static")
 (goal-src "pc/features/speedruns.gc" "speedruns-h" "autosplit-h")
 (goal-src "pc/pckernel-h.gc" "dma-buffer")
-(goal-src "pc/pckernel-impl.gc" "pckernel-h")
+(goal-src "engine/mods/mods-settings-h.gc")
+(goal-src "pc/pckernel-impl.gc" "pckernel-h" "mods-settings-h")
 (goal-src "pc/util/pc-anim-util.gc" "target-h")
 (goal-src "pc/pckernel-common.gc" "pckernel-impl" "pc-anim-util" "settings" "video" "target-h" "autosplit-h" "speedruns-h")
 (goal-src "pc/pckernel.gc" "pckernel-common")
@@ -2089,6 +2093,7 @@
  "mods/mod-settings.gc"
  "mods/mod-common-functions.gc"
  "mods/mod-custom-code.gc"
+ "mods/hide-and-seek-multi-devonly.gc"
 )
 
 (group-list "all-code"

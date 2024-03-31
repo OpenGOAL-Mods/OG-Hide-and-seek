@@ -16,6 +16,7 @@
 #include "common/util/string_util.h"
 
 #include "game/external/discord_jak1.h"
+#include "game/multiplayer.h"
 #include "game/graphics/display.h"
 #include "game/graphics/gfx.h"
 #include "game/graphics/sceGraphicsInterface.h"
@@ -566,6 +567,8 @@ void InitMachine_PCPort() {
   auto settings_path = file_util::get_user_settings_dir(g_game_version);
   intern_from_c("*pc-settings-folder*")->value = make_string_from_c(settings_path.string().c_str());
   intern_from_c("*pc-settings-built-sha*")->value = make_string_from_c(build_revision().c_str());
+
+  intern_from_c("*local_username*")->value = make_string_from_c(username);
 }
 
 /*!

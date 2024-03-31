@@ -347,8 +347,10 @@
   "ticky.o"
   "hud-classes-pc.o" ;; added
   "mod-settings.o" ;; added
-  "mod-common-functions.o" ;; added
+  "mod-common-functions.o"
   "mod-custom-code.o" ;; added
+  "hide-and-seek-multi-devonly.o"
+
   ;; keep zoomer stuff loaded
   "target-racer-h.o"
   "racer-part.o"

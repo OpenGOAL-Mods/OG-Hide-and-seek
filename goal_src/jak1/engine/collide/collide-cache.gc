@@ -2407,8 +2407,8 @@
         )
   )
 
-(defmethod fill-and-probe-using-spheres collide-cache ((obj collide-cache) (arg0 collide-using-spheres-params))
-  (fill-using-spheres obj arg0)
+(defmethod fill-and-probe-using-spheres collide-cache ((obj collide-cache) (arg0 collide-using-spheres-params) (coll-work collide-work))
+  (fill-using-spheres obj arg0 coll-work)
   (probe-using-spheres obj arg0)
   )
 

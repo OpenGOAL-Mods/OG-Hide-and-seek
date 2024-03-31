@@ -487,6 +487,8 @@
     (("skip-movies?") (set! (-> obj skip-movies?) (file-stream-read-symbol file)))
     (("subtitles?") (set! (-> obj subtitles?) (file-stream-read-symbol file)))
     (("subtitle-language") (set! (-> obj subtitle-language) (the-as pc-language (file-stream-read-int file))))
+    (("username") (set! (-> obj username) (file-stream-read-symbol file)))
+    (("color") (set! (-> obj tgt-color) (the-as tgt-color (file-stream-read-int file))))
     (("text-language") (set! (-> obj text-language) (the-as pc-language (file-stream-read-int file))))
     (("scenes-seen")
       (dotimes (i PC_SPOOL_LOG_LENGTH)
@@ -536,6 +538,8 @@
   (format file "  (subtitles? ~A)~%" (-> obj subtitles?))
   (format file "  (subtitle-language ~D)~%" (-> obj subtitle-language))
   (format file "  (text-language ~D)~%" (-> obj text-language))
+  (format file "  (username ~A)~%" (-> obj username))
+  (format file "  (color ~D)~%" (-> obj tgt-color))
 
   #|
   (format file "  (scenes-seen")

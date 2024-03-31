@@ -159,10 +159,20 @@
 
 
 (define-perm *collide-work* collide-work (new 'global 'collide-work))
-
+(define *edge-collide-work-list* (new 'global 'boxed-array collide-work MAX_MULTIPLAYER_COUNT))
+(dotimes (idx (-> *edge-collide-work-list* length))
+  (set! (-> *edge-collide-work-list* idx) (new 'global 'collide-work))
+  )
+  
 ;; og:preserve-this
 (defglobalconstant BIG_COLLIDE_CACHE_SIZE 5000)
 (define-perm *collide-cache* collide-cache (new 'global 'collide-cache))
+
+
+(define *edge-collide-cache-list* (new 'global 'boxed-array collide-cache MAX_MULTIPLAYER_COUNT))
+(dotimes (idx (-> *edge-collide-cache-list* length))
+  (set! (-> *edge-collide-cache-list* idx) (new 'global 'collide-cache))
+  )
 
 (#when PC_PORT
   ;; disgusting hack to let us overflow the collide cache up to 5k triangles

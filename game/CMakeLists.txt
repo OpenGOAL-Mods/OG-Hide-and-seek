@@ -29,6 +29,7 @@ set(RUNTIME_SOURCE
         external/discord_jak1.cpp
         external/discord_jak2.cpp
         external/discord.cpp
+        multiplayer.cpp
         graphics/display.cpp
         graphics/gfx_test.cpp
         graphics/gfx.cpp

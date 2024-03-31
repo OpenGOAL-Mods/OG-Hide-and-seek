@@ -7,7 +7,7 @@
 #include <chrono>
 #include <SFML/Audio.hpp>
 #include <SFML/Audio/Music.hpp>
-
+#include "game/multiplayer.h"
 
 #include "common/global_profiler/GlobalProfiler.h"
 #include "common/log/log.h"
@@ -1167,9 +1167,18 @@ void init_common_pc_port_functions(
   // debugging tools
   make_func_symbol_func("pc-filter-debug-string?", (void*)pc_filter_debug_string);
 
+    // HTTP server stuff
+  make_func_symbol_func("pc-http-register", (void*)http_register);
+  make_func_symbol_func("pc-http-update", (void*)http_update);
+  make_func_symbol_func("pc-http-update-settings", (void*)http_update_settings);
+  make_func_symbol_func("pc-http-mark-found", (void*)http_mark_found);
+  make_func_symbol_func("pc-http-get", (void*)http_get);
+
+
   // init ps2 VM
   if (VM::use) {
     make_func_symbol_func("vm-ptr", (void*)VM::get_vm_ptr);
     VM::vm_init();
   }
+
 }

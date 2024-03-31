@@ -405,6 +405,21 @@
 (define-extern pc-get-unix-timestamp (function int))
 (define-extern pc-filter-debug-string? (function string float symbol))
 
+
+(defconstant MAX_MULTIPLAYER_COUNT 12)
+
+(define-extern knuth-rand-int-range (function int int int))
+(declare-type remote-player-info structure)
+(declare-type multiplayer-info structure)
+(declare-type hide-and-seek-game-info-struct structure)
+(define-extern pc-http-register (function multiplayer-info remote-player-info none))  ;; used to register with the server
+(define-extern pc-http-update (function none))  ;; used to send player's position to server
+(define-extern pc-http-update-settings (function none))  ;; used to send game settings to server as admin
+(define-extern pc-http-mark-found (function int none))  ;; used to mark a hider as found by seeker
+(define-extern pc-http-get (function none))  ;; used to update game state / other players' position from server (async)
+(define-extern *local_username* string)
+
+
 (defenum pc-prof-event
   (begin 0)
   (end 1)

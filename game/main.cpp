@@ -22,6 +22,7 @@
 #include "graphics/gfx_test.h"
 
 #include "third-party/CLI11.hpp"
+#include "multiplayer.h"
 
 #ifdef _WIN32
 extern "C" {
@@ -88,6 +89,10 @@ std::string game_arg_documentation() {
  */
 int main(int argc, char** argv) {
   ArgumentGuard u8_guard(argc, argv);
+
+  read_username_from_file(username);
+  std::cout << "Username: " << username << std::endl;
+  //set_multiplayer_from_json();
 
   // CLI flags
   bool show_version = false;

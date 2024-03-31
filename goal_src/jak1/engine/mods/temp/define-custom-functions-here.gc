@@ -1,0 +1,1329 @@
+;;-*-Lisp-*-
+(in-package goal)
+
+;; name: define-custom-functions-here.gc
+;; name in dgo: define-custom-functions-here
+;; dgos: TODO
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; What is this file for.
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+#| This file is a place where you can define custom functions and GOAL code
+ to call inside of put-custom-code-here.gc for example I have defined a function that increases
+ the powercell count by one when it is called
+ |#
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Useful GOAL modding documentation
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+#| 
+Checks the condition and if it is true it does first argument if false it does optional second argument
+(if (condition) (do if true) (do if false))
+
+Gives a random FLOAT or INT between the provided ranges when called
+(rand-vu-float-range 0.0 2.0)
+(rand-vu-int-range 0 10)
+
+if the result of rand-vu-int-range is 1, then DANCE! if it is not 1, then Don't dance
+(if (= (rand-vu-int-range 0 10) 1) (DANCE!) (Don't dance))
+
+
+|#
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Define Custom Variables to use in mods
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define *multiplayer-info* (new 'global 'multiplayer-info))
+(define *remote-targets* (new 'global 'boxed-array handle MAX_MULTIPLAYER_COUNT))
+
+(define *self-player-info* (the-as remote-player-info #f))
+(define *game-state-change-time* (the-as time-frame #f))
+(define *last-game-state* (mp-game-state mp-game-invalid))
+
+(define *registered-with-server?* #f)
+(define *last-position-sync-time* (the-as time-frame #f))
+
+
+(define *lobby-continue-point* "spyro2-autumnplains-start")
+(define *hider-continue-point* "village2-start")
+(define *seeker-continue-point* "village2-dock")
+
+(defun-extern gmenu-1 none)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Define Custom Functions to call in mods
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun reset-player-to-lobby ()
+  (start 'play (get-continue-by-name *game-info* *lobby-continue-point*))
+  (none)
+  )
+
+(defun set-up-remote-if-null ()
+  (when (not *self-player-info*)
+    (set! *self-player-info* (new 'global 'remote-player-info))
+    (set! (-> *self-player-info* username) *local_username*) ;; TODO - pull this from settings I guess?
+    (set! (-> *self-player-info* color)  (-> *pc-settings* tgt-color)) ;; TODO - pull this from settings I guess?
+    )
+  (none)
+  )
+
+(defun setup-world-hns ()
+  ;; reset world
+  (set! (-> *game-info* mode) 'debug)
+  (initialize! *game-info* 'game (the-as game-save #f) (the-as string #f)) 
+  (set! (-> *game-info* mode) 'play)
+
+  ;; training
+  ;; skip intro cutscene
+  (close-specific-task! (game-task intro) (task-status need-resolution))
+
+  ;; village1
+  ;; skip geyser cutscenes/avoid warp to geyser
+  (close-specific-task! (game-task beach-ecorocks) (task-status need-introduction))
+  ;; unlock boat to/from misty (+ fishermans-boat.gc)
+  (close-specific-task! (game-task jungle-fishgame) (task-status need-resolution))
+  (send-event *target* 'get-pickup 6 (the float (game-task jungle-fishgame)))
+
+  ;; beach
+  ;; pelican intro cutscene (+ pelican.gc)
+  (close-specific-task! (game-task beach-pelican) (task-status need-hint))
+  ;; avoid seagull cutscene
+  (close-specific-task! (game-task beach-seagull) (task-status need-reminder))
+  ;; unlock blue eco vent
+  (close-specific-task! (game-task jungle-eggtop) (task-status need-resolution))
+  (send-event *target* 'get-pickup 6 (the float (game-task jungle-eggtop)))
+
+  ;; jungle
+  ;; blue eco bridge (jungle-obs.gc)
+  ;; blue eco switch (already done for beach)
+  ;; plant boss (+ plant-boss.gc)
+  (close-specific-task! (game-task jungle-plant) (task-status need-resolution))
+  (send-event *target* 'get-pickup 6 (the float (game-task jungle-plant)))
+
+  ;; misty
+  ;; muse
+  (close-specific-task! (game-task misty-muse) (task-status need-resolution))
+  (send-event *target* 'get-pickup 6 (the float (game-task misty-muse)))
+  ;; ambush (battlecontroller.gc / misty-warehouse.gc)
+  (close-specific-task! (game-task misty-warehouse) (task-status need-resolution))
+  (send-event *target* 'get-pickup 6 (the float (game-task misty-warehouse)))
+  ;; unlock boat (already done for village1)
+
+  ;; firecanyon
+  ;; unlock zoomer
+  (close-specific-task! (game-task firecanyon-assistant) (task-status need-reward-speech))
+  ;; unlock blue eco vent (already done for beach)
+
+  ;; village2
+
+  ;; sunken
+  ;; unlock soccer ball chamber (sun-exit-chamber.gc)
+  ;; unlock piggyback door (sun-iris-door.gc)
+  ;; skip dark eco rising cutscene (+ helix-water.gc)
+  (close-specific-task! (game-task sunken-slide) (task-status need-resolution))
+  (send-event *target* 'get-pickup 6 (the float (game-task sunken-slide)))
+  
+  ;; swamp
+  ;; unlock flutflut
+  (close-specific-task! (game-task beach-flutflut) (task-status need-resolution))
+  (send-event *target* 'get-pickup 6 (the float (game-task beach-flutflut)))
+  (close-specific-task! (game-task village2-levitator) (task-status need-hint))
+  ;; ambush
+  (close-specific-task! (game-task swamp-battle) (task-status need-resolution))
+  (send-event *target* 'get-pickup 6 (the float (game-task swamp-battle)))
+  
+  ;; rolling
+  ;; zoomer
+  (close-specific-task! (game-task village2-levitator) (task-status need-introduction))
+  ;; DMG
+  (close-specific-task! (game-task rolling-race) (task-status need-introduction))
+
+  ;; ogre
+  ;; klaww (ogreboss.gc / ogre-obs.gc)
+  (close-specific-task! (game-task ogre-boss) (task-status need-resolution))
+  (send-event *target* 'get-pickup 6 (the float (game-task ogre-boss)))
+  ;; race (flying-lurker.gc)
+  (close-specific-task! (game-task ogre-end) (task-status need-resolution))
+  (send-event *target* 'get-pickup 6 (the float (game-task ogre-end)))
+  ;; yellow eco switch
+  ;; (close-specific-task! (game-task snow-eggtop) (task-status need-resolution))
+  ;; (send-event *target* 'get-pickup 6 (the float (game-task snow-eggtop)))
+  
+  ;; village3
+
+  ;; snow
+  ;; gondola (village3-obs.gc)
+  ;; flutflut (partially done for swamp)
+  (close-specific-task! (game-task village3-button) (task-status need-hint))
+  ;; fort gate
+  (close-specific-task! (game-task snow-ball) (task-status need-resolution))
+  (send-event *target* 'get-pickup 6 (the float (game-task snow-ball)))
+  
+  ;; cave
+  ;; yellow switch (already done for ogre)
+  
+  ;; lavatube
+  ;; unlock zoomer (+ racer.gc)
+  (close-specific-task! (game-task lavatube-start) (task-status need-reward-speech))
+  ;; TODO - fix/remove zoomer for spawns?
+  ;; unlock oranges doors
+  (close-specific-task! (game-task lavatube-balls) (task-status need-resolution))
+  (close-specific-task! (game-task lavatube-end) (task-status need-resolution))
+  (send-event *target* 'get-pickup 6 (the float (game-task lavatube-end)))
+  
+  ;; citadel
+  ;; red/yellow/blue sage (no ambush cutscene, steps are there so no v2)
+  (close-specific-task! (game-task citadel-sage-red) (task-status need-resolution))
+  (send-event *target* 'get-pickup 6 (the float (game-task citadel-sage-red)))
+  (close-specific-task! (game-task citadel-sage-yellow) (task-status need-resolution))
+  (send-event *target* 'get-pickup 6 (the float (game-task citadel-sage-yellow)))
+  (close-specific-task! (game-task citadel-sage-blue) (task-status need-resolution))
+  (send-event *target* 'get-pickup 6 (the float (game-task citadel-sage-blue)))
+  
+  (none)
+  )
+
+(defun should-update-game-settings? () 
+  (and (>= (-> *multiplayer-info* player_num) 0)
+       (nonzero? (-> *multiplayer-info* players (-> *multiplayer-info* player_num) is_admin?))
+       )
+  )
+
+(defun update-multiplayer-info()
+  (set! (-> *multiplayer-info* players (-> *multiplayer-info* player_num) username)   (-> *self-player-info* username))
+  (set! (-> *multiplayer-info* players (-> *multiplayer-info* player_num) color)      (-> *self-player-info* color))
+  (set! (-> *multiplayer-info* players (-> *multiplayer-info* player_num) trans_x)    (-> *target* root trans x))
+  (set! (-> *multiplayer-info* players (-> *multiplayer-info* player_num) trans_y)    (-> *target* root trans y))
+  (set! (-> *multiplayer-info* players (-> *multiplayer-info* player_num) trans_z)    (-> *target* root trans z))
+  (set! (-> *multiplayer-info* players (-> *multiplayer-info* player_num) quat_x)     (-> *target* root quat x))
+  (set! (-> *multiplayer-info* players (-> *multiplayer-info* player_num) quat_y)     (-> *target* root quat y))
+  (set! (-> *multiplayer-info* players (-> *multiplayer-info* player_num) quat_z)     (-> *target* root quat z))
+  (set! (-> *multiplayer-info* players (-> *multiplayer-info* player_num) quat_w)     (-> *target* root quat w))
+  (set! (-> *multiplayer-info* players (-> *multiplayer-info* player_num) tgt_state)  (-> *target* state name))
+  (none)
+  )
+
+
+
+(defun color-target-rgb ((tgt process-drawable) (r float) (g float) (b float))
+  (set! (-> tgt draw color-mult r) r)
+  (set! (-> tgt draw color-mult g) g)
+  (set! (-> tgt draw color-mult b) b)
+  (none)
+  )
+
+(defun color-target ((tgt process-drawable) (color tgt-color))
+  (case color
+    (((tgt-color normal))
+      (color-target-rgb tgt 1.0 1.0 1.0)
+      )
+    (((tgt-color white))
+      (color-target-rgb tgt 10.0 10.0 10.0)
+      )
+    (((tgt-color black))
+      (color-target-rgb tgt 0.0 0.0 0.0)
+      )
+    (((tgt-color red))
+      (color-target-rgb tgt 5.0 0.0 0.0)
+      )
+    (((tgt-color green))
+      (color-target-rgb tgt 0.0 5.0 0.0)
+      )
+    (((tgt-color blue))
+      (color-target-rgb tgt 0.0 0.0 5.0)
+      )
+    (((tgt-color yellow))
+      (color-target-rgb tgt 5.0 5.0 0.0)
+      )
+    (((tgt-color purple))
+      (color-target-rgb tgt 0.7 0.2 2.0)
+      )
+    (((tgt-color pink))
+      (color-target-rgb tgt 5.0 0.0 5.0)
+      )
+    (((tgt-color light-blue))
+      (color-target-rgb tgt 0.0 5.0 5.0)
+      )
+    ;; (((tgt-color holo))
+    ;;   (color-target-rgb tgt 
+    ;;     (rand-vu-float-range 0.0 5.0)
+    ;;     (rand-vu-float-range 0.0 5.0)
+    ;;     (rand-vu-float-range 0.0 5.0))
+    ;;   )
+    )
+  )
+
+(defun target-sync-state ((tgt-state symbol) (t target))
+  (case tgt-state
+    ;; (('target-attack))
+    ;; (('target-attack-air))
+    ;; (('target-attack-uppercut))
+    ;; (('target-attack-uppercut-jump))
+    ;; (('target-billy-game))
+    ;; (('target-clone-anim))
+    ;; (('target-continue))
+    ;; (('target-death))
+    ;; (('target-demo))
+    ;; (('target-double-jump))
+    ;; (('target-duck-high-jump))
+    ;; (('target-duck-high-jump-jump))
+    ;; (('target-duck-stance))
+    ;; (('target-duck-walk))
+    ;; (('target-eco-powerup) (send-event t 'powerup))
+    ;; (('target-edge-grab 'target-edge-grab-jump 'target-edge-grab-off)
+    ;;   (send-event t 'edge-grab)
+    ;;   )
+    (('target-falling) (send-event t 'change-mode 'falling))
+    ;; (('target-final-door))
+    ;; (('target-fishing) (send-event t 'change-mode 'fishing #f))
+    ;; (('target-flop))
+    ;; (('target-flop-hit-ground))
+    
+    (('target-flut-get-off 'target-flut-get-off-hit-ground 'target-flut-get-off-jump)
+      (case (-> t state name)
+        (('target-flut-air-attack 'target-flut-air-attack-hit-ground 'target-flut-clone-anim 'target-flut-death 
+        'target-flut-double-jump 'target-flut-falling 'target-flut-get-on 'target-flut-grab 'target-flut-hit 'target-flut-hit-ground 
+        'target-flut-jump 'target-flut-running-attack 'target-flut-stance 'target-flut-start 'target-flut-walk)
+          ;; on flutflut, get off
+          (send-event t 'change-mode 'normal #f)
+          )
+        )
+      )
+    (('target-flut-air-attack 'target-flut-air-attack-hit-ground 'target-flut-clone-anim 'target-flut-death 
+      'target-flut-double-jump 'target-flut-falling 'target-flut-get-on 'target-flut-grab 'target-flut-hit 'target-flut-hit-ground 
+      'target-flut-jump 'target-flut-running-attack 'target-flut-stance 'target-flut-start 'target-flut-walk)
+      (case (-> t state name)
+        (('target-racing 'target-racing-bounce 'target-racing-clone-anim 'target-racing-death 'target-racing-falling 'target-racing-get-on 
+        'target-racing-grab 'target-racing-hit 'target-racing-jump  'target-racing-smack 'target-racing-start)
+          ;; on zoomer, get off 
+          (send-event t 'change-mode 'normal #f)
+          )
+        (('target-flut-air-attack 'target-flut-air-attack-hit-ground 'target-flut-clone-anim 'target-flut-death 
+          'target-flut-double-jump 'target-flut-falling 'target-flut-get-on 'target-flut-grab 'target-flut-hit 'target-flut-hit-ground 
+          'target-flut-jump 'target-flut-running-attack 'target-flut-stance 'target-flut-start 'target-flut-walk)
+          ;; already on flutflut, do nothing
+          )
+        (else
+          (send-event t 'change-mode 'flut #f)
+          )
+        )
+      )
+    ;; (('target-grab))
+    ;; (('target-high-jump ))
+    ;; (('target-hit ))
+    ;; (('target-hit-ground ))
+    ;; (('target-hit-ground-hard))
+    ;; (('target-ice-stance))
+    ;; (('target-ice-walk))
+    ;; (('target-jump ))
+    ;; (('target-jump-forward ))
+    ;; (('target-launch))
+    ;; (('target-load-wait))
+    ;; (('target-look-around))
+    ;; (('target-periscope))
+    ;; (('target-play-anim ))
+    ;; (('target-pole-cycle) (send-event t 'pole-grab))
+    ;; (('target-pole-flip-forward))
+    ;; (('target-pole-flip-forward-jump))
+    ;; (('target-pole-flip-up))
+    ;; (('target-pole-flip-up-jump))
+    (('target-racing-get-off 'target-racing-get-off-hit-ground 'target-racing-get-off-jump)
+      (case (-> t state name)
+        (('target-racing 'target-racing-bounce 'target-racing-clone-anim 'target-racing-death 'target-racing-falling 'target-racing-get-on 
+        'target-racing-grab 'target-racing-hit 'target-racing-jump  'target-racing-smack 'target-racing-start)
+          ;; on zoomer, get off 
+          (send-event t 'change-mode 'normal #f)
+          )
+        )
+      )
+    (('target-racing 'target-racing-bounce 'target-racing-clone-anim 'target-racing-death 'target-racing-falling 'target-racing-get-on 
+      'target-racing-grab 'target-racing-hit 'target-racing-jump  'target-racing-smack 'target-racing-start)
+      (case (-> t state name)
+        (('target-flut-air-attack 'target-flut-air-attack-hit-ground 'target-flut-clone-anim 'target-flut-death 
+          'target-flut-double-jump 'target-flut-falling 'target-flut-get-on 'target-flut-grab 'target-flut-hit 'target-flut-hit-ground 
+          'target-flut-jump 'target-flut-running-attack 'target-flut-stance 'target-flut-start 'target-flut-walk)
+            ;; on flutflut, get off
+            (send-event t 'change-mode 'normal #f)
+            )
+        (('target-racing 'target-racing-bounce 'target-racing-clone-anim 'target-racing-death 'target-racing-falling 'target-racing-get-on 
+          'target-racing-grab 'target-racing-hit 'target-racing-jump  'target-racing-smack 'target-racing-start)
+          ;; already on zoomer, do nothing
+          )
+        (else
+          (send-event t 'change-mode 'racing #f)
+          )
+        )
+      )
+    ;; (('target-running-attack))
+    ;; (('target-slide-down))
+    ;; (('target-snowball))
+    ;; (('target-snowball-start))
+    ;; (('target-stance))
+    ;; (('target-stance-ambient))
+    ;; (('target-stance-look-around))
+    ;; (('target-startup))
+    (('target-swim-down 'target-swim-jump 'target-swim-jump-jump 'target-swim-stance 'target-swim-up 'target-swim-walk)
+      (case (-> t state name)
+        (('target-swim-down 'target-swim-jump 'target-swim-jump-jump 'target-swim-stance 'target-swim-up 'target-swim-walk)
+          ;; do nothing
+          )
+        (else
+          (send-event t 'swim)
+          )
+        )
+      )
+    ;; (('target-title))
+    ;; (('target-title-play))
+    ;; (('target-title-wait))
+    (('target-tube 'target-tube-death 'target-tube-hit 'target-tube-jump 'target-tube-start)
+      (case (-> t state name)
+        (('target-tube 'target-tube-death 'target-tube-hit 'target-tube-jump 'target-tube-start)
+          ;; do nothing
+          )
+        (else
+          (send-event t 'change-mode 'tube #f)
+          )
+        )
+      )
+    ;; (('target-turn-around))
+    (('target-wade-stance 'target-wade-walk)
+      (send-event t 'wade)
+      )
+    ;; (('target-walk))
+    ;; (('target-warp-in))
+    ;; (('target-warp-out))
+    ;; (('target-wheel))
+    ;; (('target-wheel-flip))
+    ;; (('target-yellow-blast))
+    ;; (('target-yellow-jump-blast))
+    )
+  (none)
+  )
+
+(defun position-actor ((obj process-drawable) (p remote-player-info))
+  ;; position
+  (set! (-> obj root trans x) (-> p trans_x))
+  (set! (-> obj root trans y) (-> p trans_y))
+  (set! (-> obj root trans z) (-> p trans_z))
+  ;; rotation
+  (set! (-> obj root quat x)  (-> p quat_x))
+  (set! (-> obj root quat y)  (-> p quat_y))
+  (set! (-> obj root quat z)  (-> p quat_z))
+  (set! (-> obj root quat w)  (-> p quat_w))
+
+  (color-target obj (-> p color))
+
+  ;; additional steps for rotation, state, etc
+  (case (-> obj type)
+    ((target)
+      (let* ((t (the target obj))
+             (local-seeker? (= (-> *multiplayer-info* players (-> *multiplayer-info* player_num) hns_info role) (mp-game-role seeker)))
+             (remote-seeker? (= (-> p hns_info role) (mp-game-role seeker)))
+             )
+        ;; draw usernames if both players are seekers/hiders
+        (when (and (= local-seeker? remote-seeker?) #t)
+          (add-debug-text-3d
+                       #t
+                       (bucket-id subtitle)
+                       (-> p username)
+                       (-> t root trans)
+                       (font-color white)
+                       (new 'static 'vector2h :y 16)
+                       )
+          )
+
+        ;; make invulnerable so they dont die
+        (logior! (-> t state-flags) (state-flags invulnerable))
+
+        ;; finalize rotation
+        (quaternion-copy! (-> t control dir-targ) (-> t root quat))
+          
+        ;; sync target state
+        (target-sync-state (-> p tgt_state) t)
+        )
+      )
+    ((money)
+      (let ((m (the money obj)))
+        (vector-copy! (-> m base) (-> m root trans))
+        (vector-copy! (-> m root-override root-prim world-sphere) (-> m root trans))
+        )
+      )
+    )
+    (none)
+  )
+
+(defun start-extra-target ()
+  (ppointer->handle (process-spawn
+                target
+                :init init-target
+                  (-> *game-info* current-continue)
+                :from *target-dead-pool*
+                :to *target-pool*
+                :stack *kernel-dram-stack*
+                ))
+  )
+
+(defun spawn-multiple-targets ()
+ (dotimes (idx MAX_MULTIPLAYER_COUNT)
+    (when (!= (-> *multiplayer-info* player_num) idx)
+      (when (!= (-> *multiplayer-info* players idx hns_info mp_state) (mp-tgt-state mp-tgt-invalid))
+        ;; see if we need to spawn any remote targets
+        (when (or (zero? (-> *remote-targets* idx)) (not (handle->process (-> *remote-targets* idx))))
+          (case (-> *multiplayer-info* hide-and-seek-game-info target-hider-type)
+            (((tgt-hider-type jak))
+              (set! (-> *remote-targets* idx) (start-extra-target))
+              )
+            (((tgt-hider-type orb))
+              (let ((vec (new 'stack-no-clear 'vector)))
+                (set! (-> vec x) 0.0)
+                (set! (-> vec y) -80920.0)  ;; spawn orbs 20m under 0,0,0 so nobody can collect them (nice try zed)
+                (set! (-> vec z) 0.0)
+                (set! (-> *remote-targets* idx) (ppointer->handle (birth-pickup-at-point
+                                                    vec
+                                                    (pickup-type money)
+                                                    (the-as float 1.0)
+                                                    #t
+                                                    *target*
+                                                    (the-as fact-info #f)
+                                                    #f  ;; no-bob
+                                                  )))
+                )
+              )
+            )
+          )
+        ;; assume target spawned at this point 
+
+        ;; position/color remote targets
+        (let ((p (-> *multiplayer-info* players idx))
+              (obj (the process-drawable (handle->process (-> *remote-targets* idx)))))
+          (when obj
+            (position-actor obj p)
+            )
+          )
+        )
+      )
+    ) 
+  )
+
+(defun get-target ((idx int))
+  (if (= (-> *multiplayer-info* player_num) -1)
+    (if (= idx 0)
+      *target*
+      (the-as target #f)
+      )
+    (if (= (-> *multiplayer-info* player_num) idx)
+      *target*
+      (if (and (-> *remote-targets* idx) (nonzero? (-> *remote-targets* idx)) (handle->process (-> *remote-targets* idx)))
+        (the target (handle->process (-> *remote-targets* idx)))
+        (the-as target #f)
+        )
+      )
+    )
+  )
+
+;; Macros can be used more-or-less just like functions
+(defmacro current-cell-count ()
+  `(-> *game-info* fuel)
+  )
+
+(defmacro set-current-cell-count (count)
+  `(set! (-> *game-info* fuel) ,count)
+  )
+  
+(defun increase-power-cell-by-one ()
+  (set-current-cell-count (+ (current-cell-count) 1))
+  ;; with the two macros defined above, this is equivalent to
+  ;; (set! (-> *game-info* fuel) (+ (-> *game-info* fuel) 1))
+  (none)
+  )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Define Approved Custom Functions/Macros to call in all mods
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; These are included with the mod base and you are welcome to use them in your mods!
+
+(defmacro current-checkpoint-name ()
+  `(-> *game-info* current-continue name)
+  )
+
+(defun set-current-checkpoint-by-name ((name string))
+  (set-continue! *game-info* name)
+  )
+
+(defmacro current-level-name ()
+  `(-> (level-get-target-inside *level*) name)
+  )
+  
+(defmacro current-orb-count ()
+  `(-> *game-info* money)
+  )
+
+(defmacro current-cutscene ()
+  `(-> *art-control* active-stream)
+  )
+
+;;This function moves an actor to the given coordinates
+;;example (move-actor farmer-3 3.0 74.0 -120.0)
+(defun move-actor ((actor-name string) (x float) (y float) (z float))
+  (when (entity-by-name actor-name)
+    (let* ((entity-actor (entity-by-name actor-name))
+           (actor (-> entity-actor extra process))
+           )
+      (when actor
+        (case (-> actor type)
+          ((fuel-cell)
+              (set-vector! (-> entity-actor trans) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> entity-actor extra trans) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> (the process-drawable actor) root trans) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> (the fuel-cell actor) base) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> (the fuel-cell actor) root-override trans) (meters x) (meters y) (meters z) 1.0)
+            (when (name= (-> (the fuel-cell actor) state name) 'wait)
+              ;; only move collision when idle (messes up glowing in cutscene)
+              (set! (-> (the fuel-cell actor) root-override root-prim world-sphere x) (meters x))
+              (set! (-> (the fuel-cell actor) root-override root-prim world-sphere y) (meters y))
+              (set! (-> (the fuel-cell actor) root-override root-prim world-sphere z) (meters z))
+              )
+            )
+          ((orb-cache-top)
+            ;; don't move while its activated (let it go up/down)
+            (when (not (name= (-> (the orb-cache-top actor) state name) 'orb-cache-top-activate))
+              (set-vector! (-> entity-actor trans) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> entity-actor extra trans) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> (the process-drawable actor) root trans) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> (the orb-cache-top actor) basetrans) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> (the orb-cache-top actor) root-override trans) (meters x) (meters y) (meters z) 1.0)
+              (set! (-> (the orb-cache-top actor) root-override root-prim world-sphere x) (meters x))
+              (set! (-> (the orb-cache-top actor) root-override root-prim world-sphere y) (meters y))
+              (set! (-> (the orb-cache-top actor) root-override root-prim world-sphere z) (meters z))
+              (set-vector! (-> (the orb-cache-top actor) draw origin) (meters x) (meters y) (meters z) 1.0)
+              (let ((radius (-> (the process-drawable actor) draw radius))
+                    (bounds (res-lump-data entity-actor 'visvol (inline-array vector)))
+                    )
+                (set-vector! (-> bounds 0) (- (meters x) radius) (meters y) (- (meters z) radius) 1.0)
+                (set-vector! (-> bounds 1) (+ (meters x) radius) (meters y) (+ (meters z) radius) 1.0)
+                )
+              )
+            )
+          ((money)
+            ;; don't move orbs if being blue-eco-sucked
+            (when (not (logtest? (-> (the money actor) flags) (collectable-flags suck)))
+              (set-vector! (-> entity-actor trans) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> entity-actor extra trans) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> (the process-drawable actor) root trans) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> (the money actor) base) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> (the money actor) root-override trans) (meters x) (meters y) (meters z) 1.0)
+              (set! (-> (the money actor) root-override root-prim world-sphere x) (meters x))
+              (set! (-> (the money actor) root-override root-prim world-sphere y) (meters y))
+              (set! (-> (the money actor) root-override root-prim world-sphere z) (meters z))
+              )
+            )
+          ((crate crate-buzzer)
+            ;; only move crates if they're not jumping
+            (when (= (-> (the crate actor) smush amp) 0.0)
+              (set-vector! (-> entity-actor trans) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> entity-actor extra trans) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> (the process-drawable actor) root trans) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> (the crate actor) base) (meters x) (meters y) (meters z) 1.0)
+              (set-vector! (-> (the crate actor) root-override trans) (meters x) (meters y) (meters z) 1.0)
+              (set! (-> (the crate actor) root-override root-prim world-sphere x) (meters x))
+              (set! (-> (the crate actor) root-override root-prim world-sphere y) (meters y))
+              (set! (-> (the crate actor) root-override root-prim world-sphere z) (meters z))
+              )
+            )
+          ((darkvine)
+            (set-vector! (-> entity-actor trans) (meters x) (meters y) (meters z) 1.0)
+            (set-vector! (-> entity-actor extra trans) (meters x) (meters y) (meters z) 1.0)
+            (set-vector! (-> (the process-drawable actor) root trans) (meters x) (meters y) (meters z) 1.0)
+          )
+          (else
+            (format 0 "unexpected actor type ~S ~S ~S~%" actor-name (-> entity-actor type) (-> actor type))
+            (set-vector! (-> entity-actor trans) (meters x) (meters y) (meters z) 1.0)
+            (set-vector! (-> entity-actor extra trans) (meters x) (meters y) (meters z) 1.0)
+            ;; (set-vector! (-> (the process-drawable actor) root trans) (meters x) (meters y) (meters z) 1.0)
+            )
+          )
+        )
+      )
+    )
+  (none)
+  )
+
+;;Draws a debug sphere on the actor, takes in a string actor name and a radius for the sphere in meters
+(defun draw-debug-sphere-on-actor ((actorName string)(radius float))
+  (when *debug-segment*
+    (when (process-by-ename actorName)
+      (add-debug-sphere #t (bucket-id debug)  (-> (the-as process-drawable (process-by-ename actorName)) root trans) (meters radius) (static-rgba 0 #xff 0 #x40))
+    )
+  )
+  (none)
+)
+
+
+;;This function moves a given actor to jaks current position, then prints a (move-actors) call in gk.exe
+(defun move-to-jak ((arg0 string))
+(format #t "move-actor code:  (move-actor ~a ~m ~m ~m)~%" arg0(-> (target-pos 0) x) (-> (target-pos 0) y) (-> (target-pos 0) z))
+  (when (process-by-ename arg0)
+    (set-vector!  (-> (-> (the process-drawable (process-by-ename arg0))root)trans) (-> (target-pos 0) x) (-> (target-pos 0) y) (-> (target-pos 0) z) 1.0)
+    (if (type-type? (-> (process-by-ename arg0) type) crate)
+    (begin
+        (set! (-> (the crate (process-by-ename arg0)) base y) (-> (target-pos 0) y))
+    )
+    (none)
+    )
+
+     (if (type-type? (-> (process-by-ename arg0) type) money)
+    (begin
+        (set! (-> (the money (process-by-ename arg0)) base y) (-> (target-pos 0) y))
+    )
+    (none)
+    )
+
+     (if (type-type? (-> (process-by-ename arg0) type) fuel-cell)
+    (begin
+        (set! (-> (the fuel-cell (process-by-ename arg0)) base y) (-> (target-pos 0) y))
+    )
+    (none)
+    )
+  )
+)
+
+;; quick macro for setting vector xyz in meters, leaving w alone
+(defmacro set-vector-meters! (dst x y z)
+  `(set-vector! ,dst (meters ,x) (meters ,y) (meters ,z) (-> ,dst w))
+  )
+
+;; quick macro for constructing static vector with w=1
+(defmacro static-vector-meters (x y z)
+  `(new 'static 'vector :x (meters ,x) :y (meters ,y) :z (meters ,z) :w 1.0)
+  )
+
+;; prints vector xyz in meters
+(defmacro print-vector-meters (vec &key (dst #t))
+  `(format ,dst "~m ~m ~m~%" (-> ,vec x) (-> ,vec y) (-> ,vec z))
+  )
+
+;; takes a path-control and xyz values to offsets every node in the path by
+(defmacro shift-path! (path x y z)
+  `(let ((voff (static-vector-meters ,x ,y ,z)))
+    (dotimes (idx (-> ,path num-cverts))
+      (vector+! (-> ,path cverts idx) (-> ,path cverts idx) voff)
+      )
+    )
+  )
+
+;; prints all the nodes in a path in meters
+(defmacro path-print-meters (path)
+  `(dotimes (idx (-> ,path num-cverts))
+    (print-vector-meters (-> ,path cverts idx))
+    )
+  )
+
+;; prints the position (root trans) of a process-drawable
+(defmacro pd-pos-m (procname)
+  `(let* ((obj (the process-drawable (process-by-ename ,procname)))
+          (vec (-> obj root trans)))
+    (format 0 "~m ~m ~m~%" (-> vec x) (-> vec y) (-> vec z) 4096.0)
+    (none)
+    )
+  )
+
+;;This function moves an actor based on jaks position + an offset
+(defun move-to-behind-jak ((arg0 string) (arg1 meters) (arg2 meters))
+ (when (process-by-ename arg0)
+    (set-vector!  (-> (-> (the process-drawable (process-by-ename arg0))root)trans) (-(-> (target-pos 0) x) (meters arg1)) (+ (-> (target-pos 0) y) (meters arg2)) (-(-> (target-pos 0) z)(meters arg1)) 1.0)
+    (if (type-type? (-> (process-by-ename arg0) type) money)
+    (begin
+        (set! (-> (the money (process-by-ename arg0)) base y) (->  (target-pos 0) y) )
+    )
+    (none)
+    )
+    (if (type-type? (-> (process-by-ename arg0) type) fuel-cell)
+    (begin
+        (set! (-> (the fuel-cell (process-by-ename arg0)) base y) (->  (target-pos 0) y) )
+    )
+    (none)
+    )
+  )
+)
+
+;;This turns on play hints
+(defun turnonplayhints ()
+(set! (-> *setting-control* default play-hints) #t)
+)
+
+;;This turns off playhints
+(defun turnoffplayhints()
+(set! (-> *setting-control* default play-hints) #f)
+)
+
+;;This turns on collision render when called
+(defun turnonCollisionmode()
+  (set! *collision-renderer* #t)
+  (logclear! *vu1-enable-user-menu* (vu1-renderer-mask tfrag trans-tfrag tie tie-near))
+)
+
+;;This turns off collision render when called
+(defun turnoffCollisionmode()
+  (set! *collision-renderer* #f)
+  (logior! *vu1-enable-user-menu* (vu1-renderer-mask tfrag trans-tfrag tie tie-near))
+)
+
+;;This makes it thunder in the current level
+(defun thunderTime()
+  (set! (-> (level-get-target-inside *level*) mood-func)update-mood-village2)
+  (set! (-> (level-get-target-inside *level*) mood) *village2-mood*)
+)
+
+;;This makes the current level dark when called
+(defun DarkesetGlitchTime()
+  (set! (-> (level-get-target-inside *level*) mood-func)update-mood-finalboss )
+  (set! (-> (level-get-target-inside *level*) mood) *finalboss-mood*)
+)
+
+;;This needs fixed
+(defun rainyTime()
+  (set! (-> (level-get-target-inside *level*) mood-func)update-mood-swamp)
+  (set! (-> (level-get-target-inside *level*) mood) *swamp-mood*)
+)
+
+;;This needs fixed
+(defun snowingTime()
+  (set! (-> (level-get-target-inside *level*) mood-func)update-mood-snow)
+  (set! (-> (level-get-target-inside *level*) mood) *snow-mood*)
+)
+
+;;This makes the current levels weather the same as village1
+(defun defaultWeatherTime()
+  (set! (-> (level-get-target-inside *level*) mood-func)update-mood-village1)
+  (set! (-> (level-get-target-inside *level*) mood) *village1-mood*)
+)
+
+;;This moves jak to a provided coordinate example call
+;;(tp-jak 0.0 12.0 32.32)
+(defun tp-jak ((arg0 float)(arg1 float)(arg2 float))
+  (set! (-> (target-pos 0) x) (meters arg0))
+  (set! (-> (target-pos 0) y) (meters arg1))
+  (set! (-> (target-pos 0) z) (meters arg2))
+)
+
+;;This returns true or false depending on if jak is within a provided distance from an actor
+(defun close? ((actor-ename string) (dist float))
+  (and 
+    (process-by-ename actor-ename)
+    (<= 
+      (vector-vector-distance 
+        (target-pos 0) 
+        (-> (the process-drawable (process-by-ename actor-ename)) root trans)
+        )
+      dist
+      )
+    )
+  )
+
+
+;;This returns true or false if jak is within a bubble defined by coordiantes and width
+(defun in-bubble? ((x float) (y float) (z float) (w float))
+  (<= 
+    (vector-vector-distance 
+      (target-pos 0) 
+      (set-vector! (new-stack-vector0) x y z 1.0)
+      )
+    (/ w 2.0)
+    )
+  )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Jak Color functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defun draw-xyz ((jak target) (x float) (y float) (z float))
+  (set! (-> jak draw color-mult x) x)
+  (set! (-> jak draw color-mult y) y)
+  (set! (-> jak draw color-mult z) z)
+)
+(defun draw-normal ((jak target))
+  (draw-xyz jak 1.0 1.0 1.0)
+)
+(defun draw-white ((jak target))
+  (draw-xyz jak 10.0 10.0 10.0)
+)
+(defun draw-black ((jak target))
+  (draw-xyz jak 0.0 0.0 0.0)
+)
+(defun draw-red ((jak target))
+  (draw-xyz jak 3.0 0.0 0.0)
+)
+(defun draw-green ((jak target))
+  (draw-xyz jak 0.0 3.0 0.0)
+)
+(defun draw-blue ((jak target))
+  (draw-xyz jak 0.0 0.0 3.0)
+)
+(defun draw-yellow ((jak target))
+  (draw-xyz jak 3.0 3.0 0.0)
+)
+(defun draw-pink ((jak target))
+  (draw-xyz jak 3.0 0.0 3.0)
+)
+(defun draw-light-blue ((jak target))
+  (draw-xyz jak 0.0 3.0 3.0)
+)
+
+(defenum hns-level-mode
+  :type uint32
+  (full-game) ;; can wander the entire world, no restrictions
+  (hub1)      ;; must stay within hub 1
+  (hub2)      ;; must stay within hub 2
+  (hub3)      ;; must stay within hub 3
+  (training)  ;; must stay within geyser
+  (village1)
+  (beach)
+  (jungle)
+  (misty)
+  (firecanyon)
+  (village2)
+  (sunken)
+  (swamp)
+  (rolling)
+  (ogre)
+  (village3)
+  (snow)
+  (cave)
+  (lavatube)
+  (citadel)
+  )
+
+
+
+;;Randomizer checkpoint stuff
+
+(define *checkpoint-list-by-level-idx* 
+  (new 'static 'boxed-array :type (array string) :length 20 :allocated-length 20
+    ;; Geyser Rock
+    (new 'static 'boxed-array :type string :length 2
+      "game-start"
+      "training-far"
+    )
+        ;; Geyser Rock
+    (new 'static 'boxed-array :type string :length 2
+      "game-start"
+      "training-far"
+    )
+        ;; Geyser Rock
+    (new 'static 'boxed-array :type string :length 2
+      "game-start"
+      "training-far"
+    )
+        ;; Geyser Rock
+    (new 'static 'boxed-array :type string :length 2
+      "game-start"
+      "training-far"
+    )
+        ;; Geyser Rock
+    (new 'static 'boxed-array :type string :length 2
+      "game-start"
+      "training-far"
+    )
+    ;; Sandover
+    (new 'static 'boxed-array :type string :length 3
+      "village1-hut"
+      "village1-warp"
+      "village1-far"
+    )
+    ;; Sentinel Beach
+    (new 'static 'boxed-array :type string :length 3
+      "beach-start"
+      "beach-pelican"
+      "beach-far"
+    )
+    ;; Forbidden Jungle
+    (new 'static 'boxed-array :type string :length 3
+      "jungle-start"
+      "jungle-far"
+      "jungle-tower"
+    )
+    ;; Misty Island
+    (new 'static 'boxed-array :type string :length 5
+      "misty-start"
+      "misty-silo"
+      "misty-bike"
+      "misty-backside"
+      "misty-silo2"
+    )
+    ;; Fire Canyon
+    (new 'static 'boxed-array :type string :length 2
+      "firecanyon-start"
+      "firecanyon-end"
+    )
+    ;; Rock Village
+    (new 'static 'boxed-array :type string :length 3
+      "village2-start"
+      "village2-warp"
+      "village2-dock"
+    )
+    ;; Lost Precursor City
+    (new 'static 'boxed-array :type string :length 6
+      "sunken-start"
+      "sunken1"
+      "sunken2"
+      "sunken-tube1"
+      "sunkenb-start"
+      "sunkenb-helix"
+    )
+    ;; Boggy Swamp
+    (new 'static 'boxed-array :type string :length 8
+      "swamp-start"
+      "swamp-dock1"
+      "swamp-cave1"
+      "swamp-dock2"
+      "swamp-cave2"
+      "swamp-game"
+      "swamp-cave3"
+      "swamp-flutflut"
+    )
+    ;; Precursor Basin
+    (new 'static 'boxed-array :type string :length 1
+      "rolling-start"
+    )
+    ;; Mountain Pass
+    (new 'static 'boxed-array :type string :length 3
+      "ogre-start"
+      "ogre-race"
+      "ogre-end"
+    )
+    ;; Volcanic Crater
+    (new 'static 'boxed-array :type string :length 4
+      "village3-start"
+      "village3-warp"
+      "village3-farside"
+      "village3-cart"
+    )
+    ;; Snowy Mountain
+    (new 'static 'boxed-array :type string :length 9
+      "snow-start"
+      "snow-fort"
+      "snow-flut-flut"
+      "snow-pass-to-fort"
+      "snow-by-ice-lake"
+      "snow-by-ice-lake-alt"
+      "snow-outside-fort"
+      "snow-outside-cave"
+      "snow-across-from-flut"
+    )
+    ;; Spider Cave
+    (new 'static 'boxed-array :type string :length 6
+      "maincave-start"
+      "maincave-to-darkcave"
+      "maincave-to-robocave"
+      "darkcave-start"
+      "robocave-start"
+      "robocave-bottom"
+    )
+    ;; Lava Tube
+    (new 'static 'boxed-array :type string :length 6
+      "lavatube-start"
+      "lavatube-middle"
+      "lavatube-after-ribbon"
+      "lavatube-end"
+      "citadel-entrance"
+      "citadel-warp"
+    )
+    ;; Gol and Maia's Citadel
+    (new 'static 'boxed-array :type string :length 8
+      "citadel-start"
+      "citadel-plat-start"
+      "citadel-plat-end"
+      "citadel-launch-start"
+      "citadel-launch-end"
+      "citadel-generator-start"
+      "citadel-generator-end"
+      "citadel-elevator"
+    )
+  )
+)
+
+
+(defun random-checkpoint-by-level-idx ((level-idx hns-level-mode))
+  ;; ...then choose random checkpoint within that level
+  (let ((random-level-checkpoint-idx (knuth-rand-int-range 0 (-> *checkpoint-list-by-level-idx* level-idx length))))
+    (-> *checkpoint-list-by-level-idx* 
+      level-idx 
+      random-level-checkpoint-idx
+      )
+    )
+  )
+
+(defun random-checkpoint-fullgame ((level-idx hns-level-mode))
+  ;; ...then choose random checkpoint within that level
+  (let ((random-level-checkpoint-idx (knuth-rand-int-range 0 (-> *checkpoint-list-by-level-idx* length))))
+    (-> *checkpoint-list-by-level-idx*  
+      random-level-checkpoint-idx
+      )
+    )
+  )
+
+(defun random-checkpoint-hub1 ((level-idx hns-level-mode))
+  ;; ...then choose random checkpoint within that level
+  (let ((random-level-checkpoint-idx (knuth-rand-int-range 4 9)))
+    (-> *checkpoint-list-by-level-idx* 
+      random-level-checkpoint-idx
+      )
+    )
+  )
+
+(defun random-checkpoint-by-hub2 ((level-idx hns-level-mode))
+  ;; ...then choose random checkpoint within that level
+  (let ((random-level-checkpoint-idx (knuth-rand-int-range 9 14)))
+    (-> *checkpoint-list-by-level-idx* 
+      random-level-checkpoint-idx
+      )
+    )
+  )
+
+(defun random-checkpoint-hub3 ((level-idx hns-level-mode))
+  ;; ...then choose random checkpoint within that level
+  (let ((random-level-checkpoint-idx (knuth-rand-int-range 14 (-> *checkpoint-list-by-level-idx*  length))))
+    (-> *checkpoint-list-by-level-idx*  
+      random-level-checkpoint-idx
+      )
+    )
+  )
+
+(define inbounds-check 0)
+;;Return a boolean if the play is out of the playing area
+(defun check-player-inbounds ((idx hns-level-mode))
+(case idx
+    (((hns-level-mode full-game))
+    (if (= (-> (level-get-target-inside *level*) name) 'full-game)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode hub1))
+    (if (= (-> (level-get-target-inside *level*) name) 'hub1)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode hub2))
+    (if (= (-> (level-get-target-inside *level*) name) 'hub2)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode hub3))
+    (if (= (-> (level-get-target-inside *level*) name) 'hub3)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode training))
+    (if (= (-> (level-get-target-inside *level*) name) 'training)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode village1))
+    (if (= (-> (level-get-target-inside *level*) name) 'village1)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode beach))
+    (if (= (-> (level-get-target-inside *level*) name) 'beach)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode jungle))
+    (if (or (= (-> (level-get-target-inside *level*) name) 'jungle)
+            (= (-> (level-get-target-inside *level*) name) 'jungleb))
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode misty))
+    (if (= (-> (level-get-target-inside *level*) name) 'misty)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode firecanyon))
+    (if (= (-> (level-get-target-inside *level*) name) 'firecanyon)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode village2))
+    (if (= (-> (level-get-target-inside *level*) name) 'village2)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode sunken))
+    (if (or (= (-> (level-get-target-inside *level*) name) 'sunken) 
+            (= (-> (level-get-target-inside *level*) name) 'sunkenb))
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode swamp))
+    (if (= (-> (level-get-target-inside *level*) name) 'swamp)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode rolling))
+    (if (= (-> (level-get-target-inside *level*) name) 'rolling)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode ogre))
+    (if (= (-> (level-get-target-inside *level*) name) 'ogre)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode village3))
+    (if (= (-> (level-get-target-inside *level*) name) 'village3)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode snow))
+    (if (= (-> (level-get-target-inside *level*) name) 'snow)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode cave))
+    (if (or (= (-> (level-get-target-inside *level*) name) 'maincave)
+            (= (-> (level-get-target-inside *level*) name) 'robocave) 
+            (= (-> (level-get-target-inside *level*) name) 'darkcave))
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode lavatube))
+    (if (= (-> (level-get-target-inside *level*) name) 'lavatube)
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (((hns-level-mode citadel))
+    (if (or (= (-> (level-get-target-inside *level*) name) 'citadel)
+            (= (-> (level-get-target-inside *level*) name) 'finalboss))
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+    ))
+    (else
+    (set! inbounds-check 0)
+    )
+)
+inbounds-check
+)
+
+(defun check-player-inbounds-multi ((idx hns-level-mode))
+(case idx
+    (((hns-level-mode full-game))
+    (set! inbounds-check 1) ;;Impossible to be outside of the full game
+    )
+    (((hns-level-mode hub1))
+    (if (or (nonzero?(check-player-inbounds (hns-level-mode training)))
+            (nonzero?(check-player-inbounds (hns-level-mode village1)))
+            (nonzero?(check-player-inbounds (hns-level-mode beach)))
+            (nonzero?(check-player-inbounds (hns-level-mode misty)))
+            (nonzero?(check-player-inbounds (hns-level-mode jungle)))
+            (nonzero?(check-player-inbounds (hns-level-mode firecanyon))))
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+
+    ))
+    (((hns-level-mode hub2))
+    (if (or (nonzero?(check-player-inbounds (hns-level-mode firecanyon)))
+            (nonzero?(check-player-inbounds (hns-level-mode village2)))
+            (nonzero?(check-player-inbounds (hns-level-mode rolling)))
+            (nonzero?(check-player-inbounds (hns-level-mode ogre)))
+            (nonzero?(check-player-inbounds (hns-level-mode sunken)))
+            (nonzero?(check-player-inbounds (hns-level-mode swamp))))
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+
+    ))
+    (((hns-level-mode hub3))
+    (if (or (nonzero?(check-player-inbounds (hns-level-mode ogre)))
+            (nonzero?(check-player-inbounds (hns-level-mode village3)))
+            (nonzero?(check-player-inbounds (hns-level-mode snow)))
+            (nonzero?(check-player-inbounds (hns-level-mode cave)))
+            (nonzero?(check-player-inbounds (hns-level-mode lavatube)))
+            (nonzero?(check-player-inbounds (hns-level-mode citadel))))
+    (set! inbounds-check 1)
+    (set! inbounds-check 0)
+
+    ))
+    (else
+    (set! inbounds-check 0)
+    )
+)
+
+
+inbounds-check
+)
+
+(defun draw-active-players-text ((buf dma-buffer))
+  (clear *temp-string*)
+  (dotimes (idx MAX_MULTIPLAYER_COUNT)
+    (when (!= (-> *multiplayer-info* players idx hns_info mp_state) (mp-tgt-state mp-tgt-invalid))
+      (format *temp-string* "~S (~S)~%"
+        (-> *multiplayer-info* players idx username)
+        (mp-tgt-state->display (-> *multiplayer-info* players idx hns_info mp_state))
+        )
+      )
+    )
+    (draw-string-xy *temp-string* buf 5 48 (font-color cyan) (font-flags shadow kerning))
+  (none)
+  )
+
+(defun draw-instructions-text ((buf dma-buffer) (str string))
+  (draw-string-xy str buf 256 200 (font-color flat-yellow) (font-flags middle shadow kerning))
+  (none)
+  )
+
+(defun draw-alert-text ((buf dma-buffer) (str string))
+  (draw-string-xy str buf 256 48 (font-color red) (font-flags middle shadow kerning))
+  (none)
+  )
+
+;; hns Admin functions
+
+(defun admin-roll-random-level ()
+  ;;TODO rand range starts at 4 as the logic for full game and hub are not implmented
+  (set! (-> *multiplayer-info* hide-and-seek-game-info level-mode) (the-as hns-level-mode (knuth-rand-int-range 4 (-> *checkpoint-list-by-level-idx* length))))
+)
+
+(defun test-admin-warp ()
+  (admin-roll-random-level)
+
+  (set! *seeker-continue-point* (random-checkpoint-by-level-idx  (-> *multiplayer-info* hide-and-seek-game-info level-mode)))
+  (set! *hider-continue-point* (random-checkpoint-by-level-idx  (-> *multiplayer-info* hide-and-seek-game-info level-mode)))
+  (start 'play (get-continue-by-name *game-info* *seeker-continue-point*))
+  (check-player-inbounds (-> *multiplayer-info* hide-and-seek-game-info level-mode))
+
+)
+
+(defun update-hide-and-seek-settings()
+  #|
+  If we are the admin, set our settings locally to prepare to push them to the server, then call a funtion to push them to the server.
+  Most of these settings will be set via progress menu, only things we need to calculate here is the "random" stuff (who is and isnt seeker etc)
+  |#
+  (when (should-update-game-settings?)
+    (admin-roll-random-level)
+    (pc-http-update-settings)
+    )
+    #|
+    If we are not the admin, we get the updated settings from the server.
+    |#
+  (none)
+)
+
+
+(defun change-local-color ((d int))
+  (set! 
+    (-> *self-player-info* color) 
+    (the-as tgt-color (mod (+ (the-as int32 (-> *self-player-info* color))  
+            (the-as int32 (tgt-color max))
+            d
+            )
+          (the-as int32 (tgt-color max))
+          )
+    ))
+    (none)
+  )
+

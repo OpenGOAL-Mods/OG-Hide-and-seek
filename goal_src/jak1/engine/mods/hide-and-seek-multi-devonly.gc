@@ -1,0 +1,114 @@
+;;-*-Lisp-*-
+(in-package goal)
+
+;; name: hide-and-seek-multi-devonly.gc
+;; name in dgo: hide-and-seek-multi-devonly
+;; dgos: TODO
+
+;;;;;
+;Variables
+;;;;;
+
+(define y-coord 140)
+
+(define col-int 8) ;int for menu's font color
+
+(define display-gmenu? #f)
+(define page 2) ;menu's page index
+(define page-size 15) ;number of pages used to mod
+
+;;;;;
+;Menu
+;;;;;
+
+(defun gmenu-1 ()
+  ;; show/hide gmenu with L3
+  (if (cpad-pressed? 0 l3)
+    (set! display-gmenu? (not display-gmenu?))
+    )
+
+  ;; handle input / draw gmenu page
+  (when display-gmenu?
+    (when (cpad-pressed? 0 right)
+      (set! page (mod (+ page 1) page-size))
+      )
+    (when (cpad-pressed? 0 left)
+      (set! page (mod (+ (- page 1) page-size) page-size))
+      )
+    (with-dma-buffer-add-bucket ((testbuf (-> (current-frame) global-buf)) (bucket-id subtitle))
+      (case page
+        ((0)
+          ;; change text position
+          (draw-string-xy (string-format "Use Dpad to move text up/down~%Use left/right dpad to change windows") 
+                          testbuf 10 y-coord (the font-color col-int) (font-flags shadow kerning))
+          (when (cpad-pressed? 0 up)
+            (-! y-coord 5)
+            )
+          (when (cpad-pressed? 0 down)
+            (+! y-coord 5)
+            )
+          )
+        ((1)
+          ;; change font color
+          (draw-string-xy 
+            (string-format "Change font color with dpad up/down") 
+            testbuf 10 y-coord (the font-color col-int) (font-flags shadow kerning)
+            )
+          (when (cpad-pressed? 0 up)
+            (set! col-int (mod (+ col-int 1) 35))
+            )
+          (when (cpad-pressed? 0 down)
+            (set! col-int (mod (+ col-int 34) 35))  ;; equivalent to -1 with safe wrap around after 34
+            )
+          )
+        ((2)
+          ;; server/game settings
+          (draw-string-xy 
+            (string-format "OpenGOAL HTTP Hide and seek Dev menu
+Server/Game Settings
+State: ~S
+Found: ~D By: ~D"
+              (enum->string mp-game-state (-> *multiplayer-info* state))
+              (-> *multiplayer-info* hide-and-seek-game-info alert-found-pnum)
+              (-> *multiplayer-info* hide-and-seek-game-info alert-seeker-pnum)
+              )
+            testbuf 10 y-coord (the font-color col-int) (font-flags shadow kerning)
+            )
+          )
+        (else ;; >= 3
+          (let ((idx (- page 3)))
+            (clear *temp-string*)
+            (format *temp-string* "OpenGOAL HTTP Hide and seek Dev menu
+~SPlayer Settings
+Player Num: ~D
+Multiplayer State: ~S"
+              (if (= idx (-> *multiplayer-info* player_num)) "Current " "")  ;; Append "Current" for yourself
+              idx
+              (enum->string mp-tgt-state (-> *multiplayer-info* players idx hns_info mp_state))
+              )
+            (when (!= (-> *multiplayer-info* players idx hns_info mp_state) (mp-tgt-state mp-tgt-invalid))
+              (format *temp-string* "~%Username: ~S
+Player Position: ~M ~M ~M"
+                (-> *multiplayer-info* players idx username)
+                (-> *multiplayer-info* players idx trans_x)
+                (-> *multiplayer-info* players idx trans_y)
+                (-> *multiplayer-info* players idx trans_z)
+                )
+              (format *temp-string* "~%Target State: ~A
+Target Color: ~S"
+                (-> *multiplayer-info* players idx tgt_state)
+                (tgt-color->string (-> *multiplayer-info* players idx color))
+                )
+              )
+
+            (draw-string-xy *temp-string* testbuf 10 y-coord (the font-color col-int) (font-flags shadow kerning))
+            (clear *temp-string*)
+            )
+          )
+        )
+      )
+    )
+  (none)       
+)
+
+
